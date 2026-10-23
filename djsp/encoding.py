@@ -53,5 +53,5 @@ def count_clauses(instance: Instance, domains: Domains) -> int:
                     first, last, cut = _order_range(domains, before, after)
                     total += max(0, last - first + 1) + (1 if cut else 0)
     n, f = instance.n_jobs, instance.n_factories
-    total += n * (1 + f * (f - 1) // 2) + n * (n - 1) // 2 * f + 2 * n * f
+    total += n * (1 + f * (f - 1) // 2) + n * (n - 1) * f + 2 * n * f
     return total

@@ -76,6 +76,10 @@ void Encoder::factories() {
                 add({-v.factory(job_a, factory), -v.factory(job_b, factory), same});
         }
     }
+    for (int job_a = 0; job_a < n_jobs; ++job_a)
+        for (int job_b = job_a + 1; job_b < n_jobs; ++job_b)
+            for (int factory = 0; factory < n_factories; ++factory)
+                add({-v.same(job_a, job_b), -v.factory(job_a, factory), v.factory(job_b, factory)});
 }
 
 static std::vector<std::vector<const Operation *>> machine_groups(const Instance &instance) {
