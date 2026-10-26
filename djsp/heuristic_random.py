@@ -45,4 +45,4 @@ def find_upper_bound_random(instance: Instance, time_limit: float, seed: int,
         makespan, starts, factories = _construct(instance, generator)
         if best is None or makespan < best[0]:
             best = (makespan, starts, factories)
-    return best[0], best[1], best[2], {"iterations": done, "tabu_steps": None}
+    return best[0], best[1], best[2], {"iterations": done}
