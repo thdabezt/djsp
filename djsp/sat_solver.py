@@ -12,7 +12,7 @@ from .heuristic import apply_horizon
 from .model import SolveResult, factory_makespans
 from .parser import read_instance
 
-SYMMETRY = {"sb_on": "on", "sb_off": "off"}
+SYMMETRY = {"sb_on": "on", "sb_off": "off", "sb_domain": "domain"}
 
 
 def _binary() -> Path:

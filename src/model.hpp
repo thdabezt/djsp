@@ -43,7 +43,7 @@ class ClauseSink {
 
 class Variables {
   public:
-    Variables(const Instance &instance, const Domains &domains, bool symmetry);
+    Variables(const Instance &instance, const Domains &domains, bool domain, bool symmetry);
 
     int order(int operation, int time) const;
     int factory(int job, int factory);
@@ -52,6 +52,7 @@ class Variables {
     int fresh() { return ++top; }
 
     int top = 0;
+    bool domain;
     bool symmetry;
     std::vector<int> order_base;
 

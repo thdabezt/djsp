@@ -60,7 +60,7 @@ struct Options {
     int factories = 0;
     int horizon = 0;
     double time_limit = 3600.0;
-    bool symmetry = true;
+    std::string symmetry = "on";
     std::string out;
     std::string dump;
     int bound = -1;
@@ -85,9 +85,9 @@ Options parse(int argc, char **argv) {
         else if (key == "time-limit")
             options.time_limit = std::stod(value);
         else if (key == "symmetry") {
-            if (value != "on" && value != "off")
-                throw std::runtime_error("--symmetry must be on or off");
-            options.symmetry = value == "on";
+            if (value != "on" && value != "off" && value != "domain")
+                throw std::runtime_error("--symmetry must be on, off or domain");
+            options.symmetry = value;
         } else if (key == "out")
             options.out = value;
         else if (key == "dump")
@@ -193,7 +193,7 @@ void write(const std::string &path, const State &state) {
 }
 
 int dump(const Options &options, const Instance &instance, const Domains &domains) {
-    Variables variables(instance, domains, options.symmetry);
+    Variables variables(instance, domains, options.symmetry != "off", options.symmetry == "on");
     int bound = options.bound < 0 ? instance.horizon : options.bound;
     std::string body = options.dump + ".body";
     long long count = 0;
@@ -207,7 +207,7 @@ int dump(const Options &options, const Instance &instance, const Domains &domain
     }
     {
         std::ofstream output(options.dump);
-        output << "c " << instance.name << " symmetry=" << (options.symmetry ? "on" : "off")
+        output << "c " << instance.name << " symmetry=" << options.symmetry
                << " makespan<=" << bound << " horizon=" << instance.horizon << "\n";
         output << "p cnf " << variables.top << " " << count << "\n";
         std::ifstream input(body);
@@ -226,7 +226,7 @@ int solve(const Options &options, const Instance &instance, const Domains &domai
         return 0;
     }
     CaDiCaL::Solver solver;
-    Variables variables(instance, domains, options.symmetry);
+    Variables variables(instance, domains, options.symmetry != "off", options.symmetry == "on");
     SolverSink sink(solver);
     Encoder encoder(instance, domains, variables, sink);
     encode(encoder);
