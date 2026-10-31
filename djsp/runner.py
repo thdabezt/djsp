@@ -127,6 +127,7 @@ def stopped_record(path: Path, n_factories: int, engine: str, time_limit: float,
         "instance": instance.name, "source": str(instance.source), "engine": engine,
         "jobs": instance.n_jobs, "machines": instance.n_machines, "factories": instance.n_factories,
         "operations": len(instance.operations), "UB": None if engine == "cp" else cached_ub(instance.name),
+        "sat_seed": None if engine == "cp" else int(config.SAT_SEED),
         "trivial_LB": instance.lower_bound, "time_limit": time_limit,
         "status": status, "makespan": None, "lower_bound": instance.lower_bound,
         "solve_time": wall, "note": note,
@@ -232,7 +233,7 @@ def _run_task(engine: str, path: Path, n_factories: int, run_directory: Path, ti
 def _settings() -> Dict[str, object]:
     names = ["HEURISTIC_METHOD", "HEURISTIC_TIME_LIMIT", "HEURISTIC_SEED", "HEURISTIC_CACHE", "TIME_LIMIT",
              "KILL_GRACE", "PARALLEL", "MEMORY_BUDGET_MB", "SAT_BYTES_PER_CLAUSE", "MEMORY_LIMIT_MB", "MAX_CLAUSES",
-             "CPU_PINNING", "SAT_BINARY", "CPLEX_STUDIO", "CP_WORKERS", "DATASET_DIR"]
+             "CPU_PINNING", "SAT_SEED", "SAT_BINARY", "CPLEX_STUDIO", "CP_WORKERS", "DATASET_DIR"]
     return {name: str(getattr(config, name)) if isinstance(getattr(config, name), Path) else getattr(config, name)
             for name in names}
 
@@ -321,6 +322,7 @@ def main() -> int:
     parser.add_argument("--parallel", type=int, default=None)
     parser.add_argument("--memory-mb", type=float, default=None, help="memory budget of the SAT workers")
     parser.add_argument("--memory-limit-mb", type=float, default=None, help="address-space limit per worker")
+    parser.add_argument("--seed", type=int, default=None, help="CaDiCaL seed, 0 = default search (default: 0)")
     arguments = parser.parse_args()
 
     settings: Dict[str, object] = {}
@@ -336,6 +338,10 @@ def main() -> int:
         settings["MEMORY_BUDGET_MB"] = arguments.memory_mb
     if arguments.memory_limit_mb:
         settings["MEMORY_LIMIT_MB"] = arguments.memory_limit_mb
+    if arguments.seed is not None:
+        if arguments.seed < 0:
+            parser.error("--seed must be non-negative")
+        settings["SAT_SEED"] = arguments.seed
     if settings:
         config.apply_settings(settings)
         previous = json.loads(os.environ.get("DJSP_SETTINGS") or "{}")

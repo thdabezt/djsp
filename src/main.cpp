@@ -8,6 +8,7 @@
 #include <fstream>
 #include <iostream>
 #include <map>
+#include <random>
 #include <sstream>
 #include <stdexcept>
 
@@ -23,13 +24,51 @@ class SolverSink : public ClauseSink {
   public:
     explicit SolverSink(CaDiCaL::Solver &solver) : solver_(solver) {}
     void add(const std::vector<int> &clause) override {
+        if (buffering_) {
+            starts_.push_back(literals_.size());
+            literals_.insert(literals_.end(), clause.begin(), clause.end());
+            return;
+        }
         for (int literal : clause)
             solver_.add(literal);
         solver_.add(0);
     }
+    void buffer() { buffering_ = true; }
+    void flush(int seed) {
+        buffering_ = false;
+        std::vector<bool> seen;
+        for (int literal : literals_) {
+            std::size_t variable = static_cast<std::size_t>(std::abs(literal));
+            if (variable >= seen.size())
+                seen.resize(2 * variable + 1, false);
+            if (!seen[variable]) {
+                seen[variable] = true;
+                solver_.freeze(literal);
+                solver_.melt(literal);
+            }
+        }
+        std::size_t size = starts_.size();
+        starts_.push_back(literals_.size());
+        std::vector<std::size_t> order(size);
+        for (std::size_t index = 0; index < size; ++index)
+            order[index] = index;
+        std::mt19937_64 random(static_cast<std::uint64_t>(seed));
+        for (std::size_t last = size; last > 1; --last)
+            std::swap(order[last - 1], order[random() % last]);
+        for (std::size_t index : order) {
+            for (std::size_t at = starts_[index]; at < starts_[index + 1]; ++at)
+                solver_.add(literals_[at]);
+            solver_.add(0);
+        }
+        std::vector<int>().swap(literals_);
+        std::vector<std::size_t>().swap(starts_);
+    }
 
   private:
     CaDiCaL::Solver &solver_;
+    bool buffering_ = false;
+    std::vector<int> literals_;
+    std::vector<std::size_t> starts_;
 };
 
 class DimacsSink : public ClauseSink {
@@ -64,6 +103,7 @@ struct Options {
     std::string out;
     std::string dump;
     int bound = -1;
+    int seed = 0;
 };
 
 Options parse(int argc, char **argv) {
@@ -94,6 +134,11 @@ Options parse(int argc, char **argv) {
             options.dump = value;
         else if (key == "bound")
             options.bound = std::stoi(value);
+        else if (key == "seed") {
+            options.seed = std::stoi(value);
+            if (options.seed < 0)
+                throw std::runtime_error("--seed must be non-negative");
+        }
         else
             throw std::runtime_error("unknown option --" + key);
     }
@@ -120,6 +165,7 @@ struct Iteration {
 
 struct State {
     std::string status = "RUNNING";
+    int seed = 0;
     int makespan = -1;
     long long vars = 0;
     long long clauses = 0;
@@ -143,6 +189,7 @@ void write(const std::string &path, const State &state) {
     std::ostringstream json;
     json << "{\n  \"status\": \"" << state.status << "\",\n";
     json << "  \"solver\": \"CaDiCaL " << CaDiCaL::Solver::version() << "\",\n";
+    json << "  \"seed\": " << state.seed << ",\n";
     json << "  \"makespan\": " << (state.makespan < 0 ? "null" : std::to_string(state.makespan)) << ",\n";
     json << "  \"vars\": " << state.vars << ",\n  \"clauses\": " << state.clauses << ",\n";
     json << "  \"build_time\": " << number(state.build_time) << ",\n";
@@ -226,10 +273,15 @@ int solve(const Options &options, const Instance &instance, const Domains &domai
         return 0;
     }
     CaDiCaL::Solver solver;
+    state.seed = options.seed;
     Variables variables(instance, domains, options.symmetry != "off", options.symmetry == "on");
     SolverSink sink(solver);
+    if (options.seed > 0)
+        sink.buffer();
     Encoder encoder(instance, domains, variables, sink);
     encode(encoder);
+    if (options.seed > 0)
+        sink.flush(options.seed);
     state.build_time = elapsed();
     state.vars = variables.top;
     state.clauses = encoder.count;

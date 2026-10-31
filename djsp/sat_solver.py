@@ -50,6 +50,7 @@ def solve_instance_sat(
         "engine": engine,
         "solver": "CaDiCaL",
         "symmetry_breaking": SYMMETRY[engine],
+        "sat_seed": int(config.SAT_SEED),
         "jobs": instance.n_jobs,
         "machines": instance.n_machines,
         "factories": instance.n_factories,
@@ -81,7 +82,8 @@ def solve_instance_sat(
     offset = time.perf_counter() - started
     command = [str(executable), "--instance", str(instance.source), "--factories", str(n_factories),
                "--horizon", str(instance.horizon), "--symmetry", SYMMETRY[engine],
-               "--time-limit", f"{max(1.0, time_limit - offset):.3f}", "--out", str(out)]
+               "--time-limit", f"{max(1.0, time_limit - offset):.3f}", "--out", str(out),
+               "--seed", str(int(config.SAT_SEED))]
 
     best = {"makespan": None, "starts": None, "factories": None}
 

@@ -18,6 +18,7 @@ SUMMARY_FIELDS = [
     "operations",
     "engine",
     "solver",
+    "sat_seed",
     "vars",
     "clauses",
     "build_time",
