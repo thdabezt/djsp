@@ -28,7 +28,15 @@ def _cp_executable() -> str:
     return str(studio / "cpoptimizer" / "bin" / platform_dir / "cpoptimizer")
 
 
-def build_model(instance: Instance):
+def _prepare(path: str | Path, n_factories: int, bounded: bool):
+    instance = read_instance(path, n_factories)
+    if not bounded:
+        return instance, {}
+    from .heuristic import apply_horizon
+    return apply_horizon(instance)
+
+
+def build_model(instance: Instance, bound: int | None = None):
     from docplex.cp.expression import interval_var
     from docplex.cp.model import CpoModel
     from docplex.cp.modeler import alternative, end_before_start, end_of, max_of, minimize, no_overlap, presence_of
@@ -64,16 +72,20 @@ def build_model(instance: Instance):
             model.add(no_overlap([optional[(operation.id, factory)] for operation in operations]))
             constraints += 1
 
-    model.add(minimize(max_of([end_of(master[job[-1].id]) for job in instance.jobs])))
+    makespan = max_of([end_of(master[job[-1].id]) for job in instance.jobs])
+    if bound is not None:
+        model.add(makespan <= bound)
+        constraints += 1
+    model.add(minimize(makespan))
     return model, master, optional, {"intervals": len(master) + len(optional), "constraints": constraints}
 
 
-def dump_cpo(path: str | Path, n_factories: int, out_dir: str | Path) -> Path:
-    instance = read_instance(path, n_factories)
-    model = build_model(instance)[0]
+def dump_cpo(path: str | Path, n_factories: int, out_dir: str | Path, bounded: bool = False) -> Path:
+    instance, _ = _prepare(path, n_factories, bounded)
+    model = build_model(instance, instance.horizon if bounded else None)[0]
     out = Path(out_dir)
     out.mkdir(parents=True, exist_ok=True)
-    target = out / f"{instance.name}_cp.cpo"
+    target = out / (f"{instance.name}_cp_C{instance.horizon}.cpo" if bounded else f"{instance.name}_cp.cpo")
     model.export_as_cpo(out=str(target))
     return target
 
@@ -83,16 +95,17 @@ def solve_instance_cp(
     n_factories: int,
     time_limit: float = config.TIME_LIMIT,
     checkpoint: Callable[[SolveResult], None] | None = None,
+    bounded: bool = False,
 ) -> SolveResult:
     total_started = time.perf_counter()
-    instance = read_instance(path, n_factories)
+    instance, heuristic = _prepare(path, n_factories, bounded)
     n_factories = instance.n_factories
     execfile = _cp_executable()
 
     base_data: Dict[str, object] = {
         "instance": instance.name,
         "source": str(instance.source),
-        "engine": "cp",
+        "engine": "cp_ub" if bounded else "cp",
         "solver": "CP Optimizer (docplex)",
         "docplex": package_version("docplex"),
         "cplex_studio": str(config.CPLEX_STUDIO),
@@ -101,13 +114,14 @@ def solve_instance_cp(
         "machines": instance.n_machines,
         "factories": instance.n_factories,
         "operations": len(instance.operations),
-        "UB": None,
+        "UB": instance.horizon if bounded else None,
         "time_limit": time_limit,
         "trivial_LB": instance.lower_bound,
     }
+    base_data.update(heuristic)
 
     build_started = time.perf_counter()
-    model, master, optional, size = build_model(instance)
+    model, master, optional, size = build_model(instance, instance.horizon if bounded else None)
     build_time = time.perf_counter() - build_started
 
     state = {"starts": None, "factories": None, "makespan": None, "first": None, "latest": None,

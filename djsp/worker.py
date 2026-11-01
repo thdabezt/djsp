@@ -10,7 +10,8 @@ from .output import write_error, write_result
 from .parser import instance_name
 from .system import limit_memory, peak_rss_mb, pin_to
 
-ENGINES = ("sb_on", "sb_off", "cp")
+ENGINES = ("sb_on", "sb_off", "cp", "cp_ub")
+CP_ENGINES = ("cp", "cp_ub")
 
 
 def _summary_lines(row) -> None:
@@ -32,9 +33,10 @@ def main(argv=None) -> int:
     arguments = parser.parse_args(argv)
 
     if arguments.dump_model:
-        if arguments.engine == "cp":
+        if arguments.engine in CP_ENGINES:
             from .cp_solver import dump_cpo
-            target = dump_cpo(arguments.instance, arguments.factories, arguments.dump_model)
+            target = dump_cpo(arguments.instance, arguments.factories, arguments.dump_model,
+                              arguments.engine == "cp_ub")
         else:
             from .sat_solver import dump_cnf
             target = dump_cnf(arguments.instance, arguments.factories, arguments.engine, arguments.dump_model)
@@ -54,9 +56,10 @@ def main(argv=None) -> int:
         write_result(run_directory, result)
 
     try:
-        if arguments.engine == "cp":
+        if arguments.engine in CP_ENGINES:
             from .cp_solver import solve_instance_cp
-            result = solve_instance_cp(arguments.instance, arguments.factories, arguments.time_limit, checkpoint)
+            result = solve_instance_cp(arguments.instance, arguments.factories, arguments.time_limit, checkpoint,
+                                       arguments.engine == "cp_ub")
         else:
             from .sat_solver import solve_instance_sat
             result = solve_instance_sat(arguments.instance, arguments.factories, arguments.engine,
