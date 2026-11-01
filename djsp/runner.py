@@ -20,7 +20,7 @@ from . import config
 from .heuristic import cached_ub
 from .output import write_error, write_summary
 from .system import physical_cores, run_metadata, total_memory_mb
-from .worker import ENGINES
+from .worker import CP_ENGINES, ENGINES
 
 FINAL = {"OPTIMAL", "FEASIBLE", "TIMEOUT", "UNSAT", "FAILED", "SKIPPED", "MEMOUT"}
 OUT_OF_MEMORY = re.compile(r"MemoryError|bad_alloc|Cannot allocate memory|out of memory", re.IGNORECASE)
@@ -127,7 +127,7 @@ def stopped_record(path: Path, n_factories: int, engine: str, time_limit: float,
         "instance": instance.name, "source": str(instance.source), "engine": engine,
         "jobs": instance.n_jobs, "machines": instance.n_machines, "factories": instance.n_factories,
         "operations": len(instance.operations), "UB": None if engine == "cp" else cached_ub(instance.name),
-        "sat_seed": None if engine == "cp" else int(config.SAT_SEED),
+        "sat_seed": None if engine in CP_ENGINES else int(config.SAT_SEED),
         "trivial_LB": instance.lower_bound, "time_limit": time_limit,
         "status": status, "makespan": None, "lower_bound": instance.lower_bound,
         "solve_time": wall, "note": note,
@@ -181,7 +181,7 @@ def _run_task(engine: str, path: Path, n_factories: int, run_directory: Path, ti
     previous = _read_result(run_directory, name)
     if previous.get("status") in FINAL:
         return previous
-    reserved = memory.acquire(_sat_memory_mb(path, n_factories)) if engine != "cp" else 0.0
+    reserved = memory.acquire(_sat_memory_mb(path, n_factories)) if engine not in CP_ENGINES else 0.0
     heuristic = 0.0 if engine == "cp" or cached_ub(name) is not None else float(config.HEURISTIC_TIME_LIMIT)
     command = [sys.executable, "-m", "djsp.worker", "--engine", engine, "--instance", str(path),
                "--factories", str(n_factories), "--run-dir", str(run_directory),
