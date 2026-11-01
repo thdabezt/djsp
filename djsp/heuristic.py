@@ -9,12 +9,12 @@ from pathlib import Path
 from typing import Dict, List, Optional, Tuple
 
 from . import config
+from .heuristic_assign import find_upper_bound_assign
 from .heuristic_random import find_upper_bound_random
-from .heuristic_tabu import find_upper_bound_tabu
 from .model import Instance
 
-METHODS = ("tabu", "random")
-CACHE_FIELDS = ["instance", "seed", "method", "time_limit", "iterations", "tabu_steps", "ub"]
+METHODS = ("assign", "random")
+CACHE_FIELDS = ["instance", "seed", "method", "time_limit", "iterations", "ub"]
 
 
 def search(instance: Instance, method: str, time_limit: float, seed: int,
@@ -22,8 +22,9 @@ def search(instance: Instance, method: str, time_limit: float, seed: int,
     if method == "random":
         return find_upper_bound_random(instance, time_limit, seed,
                                        None if counts is None else counts["iterations"])
-    if method == "tabu":
-        return find_upper_bound_tabu(instance, time_limit, seed, float(config.HEURISTIC_TABU_SHARE), counts)
+    if method == "assign":
+        return find_upper_bound_assign(instance, time_limit, seed,
+                                       None if counts is None else counts["iterations"])
     raise ValueError(f"heuristic must be one of {METHODS}, not {method!r}")
 
 
@@ -58,11 +59,10 @@ def read_cache(path: Path) -> Dict[Tuple[str, int, str, float], Dict[str, object
     if path.is_file():
         with path.open(encoding="utf-8", newline="") as handle:
             for row in csv.DictReader(handle):
-                steps = row.get("tabu_steps")
                 entries[(row["instance"], int(row["seed"]), row["method"], float(row["time_limit"]))] = {
                     "instance": row["instance"], "seed": int(row["seed"]), "method": row["method"],
                     "time_limit": float(row["time_limit"]), "iterations": int(row["iterations"]),
-                    "tabu_steps": int(steps) if steps else None, "ub": int(row["ub"])}
+                    "ub": int(row["ub"])}
     return entries
 
 
@@ -106,8 +106,7 @@ def apply_horizon(instance: Instance) -> Tuple[Instance, Dict[str, object]]:
             makespan = int(entry["ub"])
             print(f"[{instance.name}] heuristic UB={makespan} method={method} seed={seed} (cache)", flush=True)
             record.update({"heuristic_ub": makespan, "heuristic_iterations": entry["iterations"],
-                           "heuristic_tabu_steps": entry["tabu_steps"], "heuristic_time": 0.0,
-                           "heuristic_source": "cache"})
+                           "heuristic_time": 0.0, "heuristic_source": "cache"})
             return dataclasses.replace(instance, horizon=makespan), record
     started = time.perf_counter()
     makespan, _, _, done = search(instance, method, float(config.HEURISTIC_TIME_LIMIT), seed)
@@ -115,9 +114,8 @@ def apply_horizon(instance: Instance) -> Tuple[Instance, Dict[str, object]]:
     if cache is not None:
         stored = store_in_cache(cache, {"instance": instance.name, "seed": seed, "method": method,
                                         "time_limit": float(config.HEURISTIC_TIME_LIMIT), **done, "ub": makespan})
-        if (stored["ub"], stored["iterations"], stored["tabu_steps"]) != (makespan, done["iterations"],
-                                                                          done["tabu_steps"]):
-            counts = {"iterations": stored["iterations"], "tabu_steps": stored["tabu_steps"]}
+        if (stored["ub"], stored["iterations"]) != (makespan, done["iterations"]):
+            counts = {"iterations": stored["iterations"]}
             makespan, _, _, done = search(instance, method, 0.0, seed, counts)
             if makespan != stored["ub"]:
                 raise RuntimeError(f"cached UB {stored['ub']} of {instance.name} not reproduced: {makespan}")
@@ -125,8 +123,7 @@ def apply_horizon(instance: Instance) -> Tuple[Instance, Dict[str, object]]:
     elapsed = time.perf_counter() - started
     instance = dataclasses.replace(instance, horizon=makespan)
     print(f"[{instance.name}] heuristic UB={makespan} method={method} seed={seed} "
-          f"iterations={done['iterations']} tabu_steps={done['tabu_steps']} time={elapsed:.2f}s", flush=True)
+          f"iterations={done['iterations']} time={elapsed:.2f}s", flush=True)
     record.update({"heuristic_ub": makespan, "heuristic_iterations": done["iterations"],
-                   "heuristic_tabu_steps": done["tabu_steps"], "heuristic_time": elapsed,
-                   "heuristic_source": source})
+                   "heuristic_time": elapsed, "heuristic_source": source})
     return instance, record

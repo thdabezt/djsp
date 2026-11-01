@@ -230,10 +230,9 @@ def _run_task(engine: str, path: Path, n_factories: int, run_directory: Path, ti
 
 
 def _settings() -> Dict[str, object]:
-    names = ["HEURISTIC_METHOD", "HEURISTIC_TIME_LIMIT", "HEURISTIC_TABU_SHARE", "HEURISTIC_SEED",
-             "HEURISTIC_CACHE", "TIME_LIMIT", "KILL_GRACE", "PARALLEL", "MEMORY_BUDGET_MB", "SAT_BYTES_PER_CLAUSE",
-             "MEMORY_LIMIT_MB", "MAX_CLAUSES", "CPU_PINNING", "SAT_BINARY", "CPLEX_STUDIO", "CP_WORKERS",
-             "DATASET_DIR"]
+    names = ["HEURISTIC_METHOD", "HEURISTIC_TIME_LIMIT", "HEURISTIC_SEED", "HEURISTIC_CACHE", "TIME_LIMIT",
+             "KILL_GRACE", "PARALLEL", "MEMORY_BUDGET_MB", "SAT_BYTES_PER_CLAUSE", "MEMORY_LIMIT_MB", "MAX_CLAUSES",
+             "CPU_PINNING", "SAT_BINARY", "CPLEX_STUDIO", "CP_WORKERS", "DATASET_DIR"]
     return {name: str(getattr(config, name)) if isinstance(getattr(config, name), Path) else getattr(config, name)
             for name in names}
 
@@ -313,7 +312,7 @@ def main() -> int:
     parser = argparse.ArgumentParser(prog="python -m djsp")
     parser.add_argument("instances", nargs="*", help="ta01_2f, ta01, ta01-10 or .txt paths (default: all)")
     parser.add_argument("--engine", default="sb_on", help=f"{', '.join(ENGINES)} or a comma list")
-    parser.add_argument("--heuristic", default=None, choices=("tabu", "random"), help="initial UB (default: tabu)")
+    parser.add_argument("--heuristic", default=None, choices=("assign", "random"), help="initial UB (default: assign)")
     parser.add_argument("--heuristic-time", type=float, default=None, help="heuristic time limit (default: 5)")
     parser.add_argument("--factories", default=None, help="comma list (default: 2,3,4)")
     parser.add_argument("--time-limit", type=float, default=None)
