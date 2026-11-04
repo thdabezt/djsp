@@ -104,6 +104,7 @@ struct Options {
     std::string dump;
     int bound = -1;
     int seed = 0;
+    int lb_stop = 0;
 };
 
 Options parse(int argc, char **argv) {
@@ -139,6 +140,8 @@ Options parse(int argc, char **argv) {
             if (options.seed < 0)
                 throw std::runtime_error("--seed must be non-negative");
         }
+        else if (key == "lb-stop")
+            options.lb_stop = std::stoi(value);
         else
             throw std::runtime_error("unknown option --" + key);
     }
@@ -147,6 +150,23 @@ Options parse(int argc, char **argv) {
     if (options.out.empty() && options.dump.empty())
         throw std::runtime_error("--out or --dump is required");
     return options;
+}
+
+int trivial_lower_bound(const Instance &instance) {
+    int longest = 0;
+    std::vector<long long> load(instance.n_machines, 0);
+    for (int job = 0; job < instance.n_jobs; ++job) {
+        int length = 0;
+        for (int index = 0; index < instance.n_machines; ++index) {
+            const Operation &operation = instance.at(job, index);
+            length += operation.duration;
+            load[operation.machine] += operation.duration;
+        }
+        longest = std::max(longest, length);
+    }
+    for (long long value : load)
+        longest = std::max(longest, static_cast<int>((value + instance.n_factories - 1) / instance.n_factories));
+    return longest;
 }
 
 void encode(Encoder &encoder) {
@@ -291,6 +311,7 @@ int solve(const Options &options, const Instance &instance, const Domains &domai
     Deadline deadline(options.time_limit);
     solver.connect_terminator(&deadline);
     int bound = instance.horizon;
+    int lower_bound = trivial_lower_bound(instance);
     state.status = "TIMEOUT";
     while (bound >= 0) {
         encoder.makespan_bound(bound);
@@ -348,6 +369,12 @@ int solve(const Options &options, const Instance &instance, const Domains &domai
         state.iterations.push_back({bound, "SAT", makespan, iteration_time, elapsed()});
         std::cout << "[" << instance.name << "] SAT Cmax<=" << bound << " makespan=" << makespan
                   << " iteration_time=" << iteration_time << "s" << std::endl;
+        if (options.lb_stop && makespan <= lower_bound) {
+            state.status = "OPTIMAL";
+            std::cout << "[" << instance.name << "] makespan=" << makespan << " equals the trivial lower bound"
+                      << std::endl;
+            break;
+        }
         state.status = "RUNNING";
         write(options.out, state);
         state.status = "TIMEOUT";

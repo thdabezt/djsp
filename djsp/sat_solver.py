@@ -58,6 +58,7 @@ def solve_instance_sat(
         "UB": instance.horizon,
         "time_limit": time_limit,
         "trivial_LB": instance.lower_bound,
+        "lb_stop": bool(config.LB_STOP),
     }
     base.update(heuristic)
 
@@ -83,7 +84,7 @@ def solve_instance_sat(
     command = [str(executable), "--instance", str(instance.source), "--factories", str(n_factories),
                "--horizon", str(instance.horizon), "--symmetry", SYMMETRY[engine],
                "--time-limit", f"{max(1.0, time_limit - offset):.3f}", "--out", str(out),
-               "--seed", str(int(config.SAT_SEED))]
+               "--seed", str(int(config.SAT_SEED)), "--lb-stop", str(int(bool(config.LB_STOP)))]
 
     best = {"makespan": None, "starts": None, "factories": None}
 
@@ -110,6 +111,8 @@ def solve_instance_sat(
             "solver": data.get("solver", base["solver"]),
             "makespan": best["makespan"],
             "lower_bound": best["makespan"] if proven else instance.lower_bound,
+            "optimal_by": (("UNSAT" if iterations and iterations[-1].get("status") == "UNSAT" else "trivial_LB")
+                           if proven else None),
             "factory_makespans": (factory_makespans(instance, best["starts"], best["factories"])
                                   if best["starts"] is not None else None),
             "vars": data.get("vars", 0),

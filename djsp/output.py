@@ -30,6 +30,7 @@ SUMMARY_FIELDS = [
     "makespan",
     "trivial_LB",
     "status",
+    "optimal_by",
 ]
 
 

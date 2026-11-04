@@ -233,7 +233,7 @@ def _run_task(engine: str, path: Path, n_factories: int, run_directory: Path, ti
 def _settings() -> Dict[str, object]:
     names = ["HEURISTIC_METHOD", "HEURISTIC_TIME_LIMIT", "HEURISTIC_SEED", "HEURISTIC_CACHE", "TIME_LIMIT",
              "KILL_GRACE", "PARALLEL", "MEMORY_BUDGET_MB", "SAT_BYTES_PER_CLAUSE", "MEMORY_LIMIT_MB", "MAX_CLAUSES",
-             "CPU_PINNING", "SAT_SEED", "SAT_BINARY", "CPLEX_STUDIO", "CP_WORKERS", "DATASET_DIR"]
+             "CPU_PINNING", "SAT_SEED", "SAT_BINARY", "CPLEX_STUDIO", "CP_WORKERS", "DATASET_DIR", "LB_STOP"]
     return {name: str(getattr(config, name)) if isinstance(getattr(config, name), Path) else getattr(config, name)
             for name in names}
 
@@ -323,6 +323,7 @@ def main() -> int:
     parser.add_argument("--memory-mb", type=float, default=None, help="memory budget of the SAT workers")
     parser.add_argument("--memory-limit-mb", type=float, default=None, help="address-space limit per worker")
     parser.add_argument("--seed", type=int, default=None, help="CaDiCaL seed, 0 = default search (default: 0)")
+    parser.add_argument("--lb-stop", action="store_true", help="stop at the trivial lower bound without a proof")
     arguments = parser.parse_args()
 
     settings: Dict[str, object] = {}
@@ -338,6 +339,8 @@ def main() -> int:
         settings["MEMORY_BUDGET_MB"] = arguments.memory_mb
     if arguments.memory_limit_mb:
         settings["MEMORY_LIMIT_MB"] = arguments.memory_limit_mb
+    if arguments.lb_stop:
+        settings["LB_STOP"] = True
     if arguments.seed is not None:
         if arguments.seed < 0:
             parser.error("--seed must be non-negative")
