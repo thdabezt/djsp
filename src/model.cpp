@@ -58,8 +58,8 @@ Domains build_domains(const Instance &instance) {
     return domains;
 }
 
-Variables::Variables(const Instance &instance, const Domains &domains, bool symmetry)
-    : symmetry(symmetry), domains_(domains), n_jobs_(instance.n_jobs), n_factories_(instance.n_factories) {
+Variables::Variables(const Instance &instance, const Domains &domains, bool domain, bool symmetry)
+    : domain(domain), symmetry(symmetry), domains_(domains), n_jobs_(instance.n_jobs), n_factories_(instance.n_factories) {
     std::size_t size = instance.operations.size();
     order_base.assign(size, 0);
     for (std::size_t id = 0; id < size; ++id) {
@@ -81,7 +81,7 @@ int Variables::order(int operation, int time) const {
 }
 
 int Variables::factory(int job, int factory) {
-    if (symmetry) {
+    if (domain) {
         if (job == 0)
             return factory == 0 ? kTrue : kFalse;
         if (factory > job)

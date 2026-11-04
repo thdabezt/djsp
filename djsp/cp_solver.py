@@ -36,7 +36,7 @@ def _prepare(path: str | Path, n_factories: int, bounded: bool):
     return apply_horizon(instance)
 
 
-def build_model(instance: Instance, bound: int | None = None):
+def build_model(instance: Instance, bound: int | None = None, lower: int | None = None):
     from docplex.cp.expression import interval_var
     from docplex.cp.model import CpoModel
     from docplex.cp.modeler import alternative, end_before_start, end_of, max_of, minimize, no_overlap, presence_of
@@ -76,13 +76,17 @@ def build_model(instance: Instance, bound: int | None = None):
     if bound is not None:
         model.add(makespan <= bound)
         constraints += 1
+    if lower is not None:
+        model.add(makespan >= lower)
+        constraints += 1
     model.add(minimize(makespan))
     return model, master, optional, {"intervals": len(master) + len(optional), "constraints": constraints}
 
 
 def dump_cpo(path: str | Path, n_factories: int, out_dir: str | Path, bounded: bool = False) -> Path:
     instance, _ = _prepare(path, n_factories, bounded)
-    model = build_model(instance, instance.horizon if bounded else None)[0]
+    model = build_model(instance, instance.horizon if bounded else None,
+                        instance.lower_bound if config.LB_STOP else None)[0]
     out = Path(out_dir)
     out.mkdir(parents=True, exist_ok=True)
     target = out / (f"{instance.name}_cp_C{instance.horizon}.cpo" if bounded else f"{instance.name}_cp.cpo")
@@ -110,6 +114,7 @@ def solve_instance_cp(
         "docplex": package_version("docplex"),
         "cplex_studio": str(config.CPLEX_STUDIO),
         "workers": config.CP_WORKERS,
+        "cpu_count": os.cpu_count(),
         "jobs": instance.n_jobs,
         "machines": instance.n_machines,
         "factories": instance.n_factories,
@@ -117,11 +122,13 @@ def solve_instance_cp(
         "UB": instance.horizon if bounded else None,
         "time_limit": time_limit,
         "trivial_LB": instance.lower_bound,
+        "lb_stop": bool(config.LB_STOP),
     }
     base_data.update(heuristic)
 
     build_started = time.perf_counter()
-    model, master, optional, size = build_model(instance, instance.horizon if bounded else None)
+    model, master, optional, size = build_model(instance, instance.horizon if bounded else None,
+                                                instance.lower_bound if config.LB_STOP else None)
     build_time = time.perf_counter() - build_started
 
     state = {"starts": None, "factories": None, "makespan": None, "first": None, "latest": None,
@@ -147,6 +154,8 @@ def solve_instance_cp(
             "makespan": state["makespan"],
             "lower_bound": (state["makespan"] if proven
                             else max(instance.lower_bound, state["bound"] or 0)),
+            "optimal_by": (("trivial_LB" if config.LB_STOP and state["makespan"] == instance.lower_bound else "CP")
+                           if proven else None),
             "factory_makespans": (factory_makespans(instance, state["starts"], state["factories"])
                                   if state["starts"] is not None else None),
             "vars": size["intervals"],
@@ -162,8 +171,8 @@ def solve_instance_cp(
 
     left = max(1.0, time_limit - (time.perf_counter() - total_started))
     terminal = None
-    solver = model.start_search(TimeLimit=left, Workers=config.CP_WORKERS, LogVerbosity="Quiet",
-                                execfile=execfile)
+    workers = {} if str(config.CP_WORKERS).lower() == "auto" else {"Workers": int(config.CP_WORKERS)}
+    solver = model.start_search(TimeLimit=left, LogVerbosity="Quiet", execfile=execfile, **workers)
     try:
         for solution in solver:
             terminal = solution

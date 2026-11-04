@@ -10,7 +10,7 @@ from .output import write_error, write_result
 from .parser import instance_name
 from .system import limit_memory, peak_rss_mb, pin_to
 
-ENGINES = ("sb_on", "sb_off", "cp", "cp_ub")
+ENGINES = ("sb_on", "sb_off", "sb_domain", "cp", "cp_ub")
 CP_ENGINES = ("cp", "cp_ub")
 
 

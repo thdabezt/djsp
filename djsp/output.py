@@ -18,6 +18,7 @@ SUMMARY_FIELDS = [
     "operations",
     "engine",
     "solver",
+    "sat_seed",
     "vars",
     "clauses",
     "build_time",
@@ -29,6 +30,7 @@ SUMMARY_FIELDS = [
     "makespan",
     "trivial_LB",
     "status",
+    "optimal_by",
 ]
 
 

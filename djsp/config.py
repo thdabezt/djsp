@@ -32,6 +32,7 @@ HEURISTIC_CACHE = DATASET_DIR / "heuristic_ub.csv"
 HEURISTIC_HORIZON_ESTIMATE = 1.5
 
 TIME_LIMIT = 3600.0
+LB_STOP = False
 KILL_GRACE = 120.0
 
 PARALLEL = 4
@@ -41,6 +42,7 @@ MEMORY_LIMIT_MB = None
 MAX_CLAUSES = 140_000_000
 CPU_PINNING = "core"
 
+SAT_SEED = 0
 SAT_BINARY = _env_path("DJSP_SAT_BINARY", PROJECT_ROOT / "build" / f"djsp_sat{'.exe' if os.name == 'nt' else ''}")
 
 CPLEX_STUDIO = _find_cplex_studio()

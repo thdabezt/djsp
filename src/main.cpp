@@ -8,6 +8,7 @@
 #include <fstream>
 #include <iostream>
 #include <map>
+#include <random>
 #include <sstream>
 #include <stdexcept>
 
@@ -23,13 +24,51 @@ class SolverSink : public ClauseSink {
   public:
     explicit SolverSink(CaDiCaL::Solver &solver) : solver_(solver) {}
     void add(const std::vector<int> &clause) override {
+        if (buffering_) {
+            starts_.push_back(literals_.size());
+            literals_.insert(literals_.end(), clause.begin(), clause.end());
+            return;
+        }
         for (int literal : clause)
             solver_.add(literal);
         solver_.add(0);
     }
+    void buffer() { buffering_ = true; }
+    void flush(int seed) {
+        buffering_ = false;
+        std::vector<bool> seen;
+        for (int literal : literals_) {
+            std::size_t variable = static_cast<std::size_t>(std::abs(literal));
+            if (variable >= seen.size())
+                seen.resize(2 * variable + 1, false);
+            if (!seen[variable]) {
+                seen[variable] = true;
+                solver_.freeze(literal);
+                solver_.melt(literal);
+            }
+        }
+        std::size_t size = starts_.size();
+        starts_.push_back(literals_.size());
+        std::vector<std::size_t> order(size);
+        for (std::size_t index = 0; index < size; ++index)
+            order[index] = index;
+        std::mt19937_64 random(static_cast<std::uint64_t>(seed));
+        for (std::size_t last = size; last > 1; --last)
+            std::swap(order[last - 1], order[random() % last]);
+        for (std::size_t index : order) {
+            for (std::size_t at = starts_[index]; at < starts_[index + 1]; ++at)
+                solver_.add(literals_[at]);
+            solver_.add(0);
+        }
+        std::vector<int>().swap(literals_);
+        std::vector<std::size_t>().swap(starts_);
+    }
 
   private:
     CaDiCaL::Solver &solver_;
+    bool buffering_ = false;
+    std::vector<int> literals_;
+    std::vector<std::size_t> starts_;
 };
 
 class DimacsSink : public ClauseSink {
@@ -60,10 +99,12 @@ struct Options {
     int factories = 0;
     int horizon = 0;
     double time_limit = 3600.0;
-    bool symmetry = true;
+    std::string symmetry = "on";
     std::string out;
     std::string dump;
     int bound = -1;
+    int seed = 0;
+    int lb_stop = 0;
 };
 
 Options parse(int argc, char **argv) {
@@ -85,15 +126,22 @@ Options parse(int argc, char **argv) {
         else if (key == "time-limit")
             options.time_limit = std::stod(value);
         else if (key == "symmetry") {
-            if (value != "on" && value != "off")
-                throw std::runtime_error("--symmetry must be on or off");
-            options.symmetry = value == "on";
+            if (value != "on" && value != "off" && value != "domain")
+                throw std::runtime_error("--symmetry must be on, off or domain");
+            options.symmetry = value;
         } else if (key == "out")
             options.out = value;
         else if (key == "dump")
             options.dump = value;
         else if (key == "bound")
             options.bound = std::stoi(value);
+        else if (key == "seed") {
+            options.seed = std::stoi(value);
+            if (options.seed < 0)
+                throw std::runtime_error("--seed must be non-negative");
+        }
+        else if (key == "lb-stop")
+            options.lb_stop = std::stoi(value);
         else
             throw std::runtime_error("unknown option --" + key);
     }
@@ -102,6 +150,23 @@ Options parse(int argc, char **argv) {
     if (options.out.empty() && options.dump.empty())
         throw std::runtime_error("--out or --dump is required");
     return options;
+}
+
+int trivial_lower_bound(const Instance &instance) {
+    int longest = 0;
+    std::vector<long long> load(instance.n_machines, 0);
+    for (int job = 0; job < instance.n_jobs; ++job) {
+        int length = 0;
+        for (int index = 0; index < instance.n_machines; ++index) {
+            const Operation &operation = instance.at(job, index);
+            length += operation.duration;
+            load[operation.machine] += operation.duration;
+        }
+        longest = std::max(longest, length);
+    }
+    for (long long value : load)
+        longest = std::max(longest, static_cast<int>((value + instance.n_factories - 1) / instance.n_factories));
+    return longest;
 }
 
 void encode(Encoder &encoder) {
@@ -120,6 +185,7 @@ struct Iteration {
 
 struct State {
     std::string status = "RUNNING";
+    int seed = 0;
     int makespan = -1;
     long long vars = 0;
     long long clauses = 0;
@@ -143,6 +209,7 @@ void write(const std::string &path, const State &state) {
     std::ostringstream json;
     json << "{\n  \"status\": \"" << state.status << "\",\n";
     json << "  \"solver\": \"CaDiCaL " << CaDiCaL::Solver::version() << "\",\n";
+    json << "  \"seed\": " << state.seed << ",\n";
     json << "  \"makespan\": " << (state.makespan < 0 ? "null" : std::to_string(state.makespan)) << ",\n";
     json << "  \"vars\": " << state.vars << ",\n  \"clauses\": " << state.clauses << ",\n";
     json << "  \"build_time\": " << number(state.build_time) << ",\n";
@@ -193,7 +260,7 @@ void write(const std::string &path, const State &state) {
 }
 
 int dump(const Options &options, const Instance &instance, const Domains &domains) {
-    Variables variables(instance, domains, options.symmetry);
+    Variables variables(instance, domains, options.symmetry != "off", options.symmetry == "on");
     int bound = options.bound < 0 ? instance.horizon : options.bound;
     std::string body = options.dump + ".body";
     long long count = 0;
@@ -207,7 +274,7 @@ int dump(const Options &options, const Instance &instance, const Domains &domain
     }
     {
         std::ofstream output(options.dump);
-        output << "c " << instance.name << " symmetry=" << (options.symmetry ? "on" : "off")
+        output << "c " << instance.name << " symmetry=" << options.symmetry
                << " makespan<=" << bound << " horizon=" << instance.horizon << "\n";
         output << "p cnf " << variables.top << " " << count << "\n";
         std::ifstream input(body);
@@ -226,10 +293,15 @@ int solve(const Options &options, const Instance &instance, const Domains &domai
         return 0;
     }
     CaDiCaL::Solver solver;
-    Variables variables(instance, domains, options.symmetry);
+    state.seed = options.seed;
+    Variables variables(instance, domains, options.symmetry != "off", options.symmetry == "on");
     SolverSink sink(solver);
+    if (options.seed > 0)
+        sink.buffer();
     Encoder encoder(instance, domains, variables, sink);
     encode(encoder);
+    if (options.seed > 0)
+        sink.flush(options.seed);
     state.build_time = elapsed();
     state.vars = variables.top;
     state.clauses = encoder.count;
@@ -239,6 +311,7 @@ int solve(const Options &options, const Instance &instance, const Domains &domai
     Deadline deadline(options.time_limit);
     solver.connect_terminator(&deadline);
     int bound = instance.horizon;
+    int lower_bound = trivial_lower_bound(instance);
     state.status = "TIMEOUT";
     while (bound >= 0) {
         encoder.makespan_bound(bound);
@@ -296,6 +369,12 @@ int solve(const Options &options, const Instance &instance, const Domains &domai
         state.iterations.push_back({bound, "SAT", makespan, iteration_time, elapsed()});
         std::cout << "[" << instance.name << "] SAT Cmax<=" << bound << " makespan=" << makespan
                   << " iteration_time=" << iteration_time << "s" << std::endl;
+        if (options.lb_stop && makespan <= lower_bound) {
+            state.status = "OPTIMAL";
+            std::cout << "[" << instance.name << "] makespan=" << makespan << " equals the trivial lower bound"
+                      << std::endl;
+            break;
+        }
         state.status = "RUNNING";
         write(options.out, state);
         state.status = "TIMEOUT";
