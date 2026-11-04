@@ -114,6 +114,7 @@ def solve_instance_cp(
         "docplex": package_version("docplex"),
         "cplex_studio": str(config.CPLEX_STUDIO),
         "workers": config.CP_WORKERS,
+        "cpu_count": os.cpu_count(),
         "jobs": instance.n_jobs,
         "machines": instance.n_machines,
         "factories": instance.n_factories,
@@ -170,8 +171,8 @@ def solve_instance_cp(
 
     left = max(1.0, time_limit - (time.perf_counter() - total_started))
     terminal = None
-    solver = model.start_search(TimeLimit=left, Workers=config.CP_WORKERS, LogVerbosity="Quiet",
-                                execfile=execfile)
+    workers = {} if str(config.CP_WORKERS).lower() == "auto" else {"Workers": int(config.CP_WORKERS)}
+    solver = model.start_search(TimeLimit=left, LogVerbosity="Quiet", execfile=execfile, **workers)
     try:
         for solution in solver:
             terminal = solution

@@ -324,6 +324,8 @@ def main() -> int:
     parser.add_argument("--memory-limit-mb", type=float, default=None, help="address-space limit per worker")
     parser.add_argument("--seed", type=int, default=None, help="CaDiCaL seed, 0 = default search (default: 0)")
     parser.add_argument("--lb-stop", action="store_true", help="stop at the trivial lower bound without a proof")
+    parser.add_argument("--cp-workers", default=None, help="CP Optimizer workers: a number or auto (default: 2)")
+    parser.add_argument("--no-pinning", action="store_true", help="do not pin workers to physical cores")
     arguments = parser.parse_args()
 
     settings: Dict[str, object] = {}
@@ -341,6 +343,12 @@ def main() -> int:
         settings["MEMORY_LIMIT_MB"] = arguments.memory_limit_mb
     if arguments.lb_stop:
         settings["LB_STOP"] = True
+    if arguments.cp_workers is not None:
+        if arguments.cp_workers.lower() != "auto" and not arguments.cp_workers.isdigit():
+            parser.error("--cp-workers must be a number or auto")
+        settings["CP_WORKERS"] = "auto" if arguments.cp_workers.lower() == "auto" else int(arguments.cp_workers)
+    if arguments.no_pinning:
+        settings["CPU_PINNING"] = None
     if arguments.seed is not None:
         if arguments.seed < 0:
             parser.error("--seed must be non-negative")
