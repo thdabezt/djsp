@@ -48,6 +48,12 @@ SAT_BINARY = _env_path("DJSP_SAT_BINARY", PROJECT_ROOT / "build" / f"djsp_sat{'.
 CPLEX_STUDIO = _find_cplex_studio()
 CP_WORKERS = 2
 
+# MILP of Naderi and Azab (2015): engine ilp_cplex runs the CPLEX Interactive Optimizer of CPLEX_STUDIO,
+# engine ilp_gurobi runs gurobipy. ilp_cplex_ub and ilp_gurobi_ub pass the initial UB to the solver as its
+# objective cutoff (CPLEX upper cutoff, Gurobi Cutoff); the model is unchanged.
+# "auto" leaves the thread count to the solver.
+ILP_THREADS = 2
+
 
 def apply_settings(settings: dict) -> None:
     module = globals()

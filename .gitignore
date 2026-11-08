@@ -9,3 +9,4 @@ results/
 *.cpo
 *.lock
 cplex.log
+*.lp

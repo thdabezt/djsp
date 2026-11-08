@@ -20,7 +20,7 @@ from . import config
 from .heuristic import cached_ub
 from .output import write_error, write_summary
 from .system import physical_cores, run_metadata, total_memory_mb
-from .worker import CP_ENGINES, ENGINES
+from .worker import ENGINES, SAT_ENGINES
 
 FINAL = {"OPTIMAL", "FEASIBLE", "TIMEOUT", "UNSAT", "FAILED", "SKIPPED", "MEMOUT"}
 OUT_OF_MEMORY = re.compile(r"MemoryError|bad_alloc|Cannot allocate memory|out of memory", re.IGNORECASE)
@@ -126,8 +126,9 @@ def stopped_record(path: Path, n_factories: int, engine: str, time_limit: float,
     return {
         "instance": instance.name, "source": str(instance.source), "engine": engine,
         "jobs": instance.n_jobs, "machines": instance.n_machines, "factories": instance.n_factories,
-        "operations": len(instance.operations), "UB": None if engine == "cp" else cached_ub(instance.name),
-        "sat_seed": None if engine in CP_ENGINES else int(config.SAT_SEED),
+        "operations": len(instance.operations),
+        "UB": cached_ub(instance.name) if engine in SAT_ENGINES or engine.endswith("_ub") else None,
+        "sat_seed": int(config.SAT_SEED) if engine in SAT_ENGINES else None,
         "trivial_LB": instance.lower_bound, "time_limit": time_limit,
         "status": status, "makespan": None, "lower_bound": instance.lower_bound,
         "solve_time": wall, "note": note,
@@ -181,8 +182,9 @@ def _run_task(engine: str, path: Path, n_factories: int, run_directory: Path, ti
     previous = _read_result(run_directory, name)
     if previous.get("status") in FINAL:
         return previous
-    reserved = memory.acquire(_sat_memory_mb(path, n_factories)) if engine not in CP_ENGINES else 0.0
-    heuristic = 0.0 if engine == "cp" or cached_ub(name) is not None else float(config.HEURISTIC_TIME_LIMIT)
+    reserved = memory.acquire(_sat_memory_mb(path, n_factories)) if engine in SAT_ENGINES else 0.0
+    bounded = engine in SAT_ENGINES or engine.endswith("_ub")
+    heuristic = float(config.HEURISTIC_TIME_LIMIT) if bounded and cached_ub(name) is None else 0.0
     command = [sys.executable, "-m", "djsp.worker", "--engine", engine, "--instance", str(path),
                "--factories", str(n_factories), "--run-dir", str(run_directory),
                "--time-limit", str(time_limit)]
@@ -233,7 +235,8 @@ def _run_task(engine: str, path: Path, n_factories: int, run_directory: Path, ti
 def _settings() -> Dict[str, object]:
     names = ["HEURISTIC_METHOD", "HEURISTIC_TIME_LIMIT", "HEURISTIC_SEED", "HEURISTIC_CACHE", "TIME_LIMIT",
              "KILL_GRACE", "PARALLEL", "MEMORY_BUDGET_MB", "SAT_BYTES_PER_CLAUSE", "MEMORY_LIMIT_MB", "MAX_CLAUSES",
-             "CPU_PINNING", "SAT_SEED", "SAT_BINARY", "CPLEX_STUDIO", "CP_WORKERS", "DATASET_DIR", "LB_STOP"]
+             "CPU_PINNING", "SAT_SEED", "SAT_BINARY", "CPLEX_STUDIO", "CP_WORKERS", "ILP_THREADS", "DATASET_DIR",
+             "LB_STOP"]
     return {name: str(getattr(config, name)) if isinstance(getattr(config, name), Path) else getattr(config, name)
             for name in names}
 
@@ -325,6 +328,7 @@ def main() -> int:
     parser.add_argument("--seed", type=int, default=None, help="CaDiCaL seed, 0 = default search (default: 0)")
     parser.add_argument("--lb-stop", action="store_true", help="stop at the trivial lower bound without a proof")
     parser.add_argument("--cp-workers", default=None, help="CP Optimizer workers: a number or auto (default: 2)")
+    parser.add_argument("--ilp-threads", default=None, help="CPLEX/Gurobi MILP threads: a number or auto (default: 2)")
     parser.add_argument("--no-pinning", action="store_true", help="do not pin workers to physical cores")
     arguments = parser.parse_args()
 
@@ -347,6 +351,10 @@ def main() -> int:
         if arguments.cp_workers.lower() != "auto" and not arguments.cp_workers.isdigit():
             parser.error("--cp-workers must be a number or auto")
         settings["CP_WORKERS"] = "auto" if arguments.cp_workers.lower() == "auto" else int(arguments.cp_workers)
+    if arguments.ilp_threads is not None:
+        if arguments.ilp_threads.lower() != "auto" and not arguments.ilp_threads.isdigit():
+            parser.error("--ilp-threads must be a number or auto")
+        settings["ILP_THREADS"] = "auto" if arguments.ilp_threads.lower() == "auto" else int(arguments.ilp_threads)
     if arguments.no_pinning:
         settings["CPU_PINNING"] = None
     if arguments.seed is not None:
