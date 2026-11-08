@@ -10,8 +10,10 @@ from .output import write_error, write_result
 from .parser import instance_name
 from .system import limit_memory, peak_rss_mb, pin_to
 
-ENGINES = ("sb_on", "sb_off", "sb_domain", "cp", "cp_ub")
+SAT_ENGINES = ("sb_on", "sb_off", "sb_domain")
 CP_ENGINES = ("cp", "cp_ub")
+ILP_ENGINES = ("ilp_cplex", "ilp_gurobi", "ilp_cplex_ub", "ilp_gurobi_ub")
+ENGINES = SAT_ENGINES + CP_ENGINES + ILP_ENGINES
 
 
 def _summary_lines(row) -> None:
@@ -37,6 +39,9 @@ def main(argv=None) -> int:
             from .cp_solver import dump_cpo
             target = dump_cpo(arguments.instance, arguments.factories, arguments.dump_model,
                               arguments.engine == "cp_ub")
+        elif arguments.engine in ILP_ENGINES:
+            from .ilp_solver import dump_lp
+            target = dump_lp(arguments.instance, arguments.factories, arguments.dump_model)
         else:
             from .sat_solver import dump_cnf
             target = dump_cnf(arguments.instance, arguments.factories, arguments.engine, arguments.dump_model)
@@ -60,6 +65,10 @@ def main(argv=None) -> int:
             from .cp_solver import solve_instance_cp
             result = solve_instance_cp(arguments.instance, arguments.factories, arguments.time_limit, checkpoint,
                                        arguments.engine == "cp_ub")
+        elif arguments.engine in ILP_ENGINES:
+            from .ilp_solver import solve_instance_ilp
+            result = solve_instance_ilp(arguments.instance, arguments.factories, arguments.engine,
+                                        arguments.time_limit, checkpoint, work_dir=run_directory / name)
         else:
             from .sat_solver import solve_instance_sat
             result = solve_instance_sat(arguments.instance, arguments.factories, arguments.engine,
